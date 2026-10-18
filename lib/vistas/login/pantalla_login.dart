@@ -18,7 +18,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
   bool _cargando = false;
 
   // URL base de tu backend seguro en la capa free de Vercel
-  final String _apiUrl = 'https://vercel.app';
+  final String _apiUrl = 'https://sistema-gestion-industrial.vercel.app';
 
   @override
   void initState() {

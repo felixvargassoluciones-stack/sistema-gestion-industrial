@@ -28,7 +28,7 @@ class _FormularioRequerimientoState extends State<FormularioRequerimiento> {
   bool _subiendoImagen = false;
 
   // Credenciales e hilos de conexión de tus plataformas gratuitas
-  final String _urlCrearVercel = 'https://vercel.app';
+  final String _urlCrearVercel = 'https://sistema-gestion-industrial.vercel.app';
   // ignore: unused_field
   final String _cloudNameCloudinary = 'tu_cloud_name_real'; 
   final String _uploadPresetCloudinary = 'preset_industrial';

@@ -15,7 +15,7 @@ class _PantallaClienteState extends State<PantallaCliente> {
   final String _correoCliente = 'operario@empresa.com';
   
   // URL base de tu backend seguro en la capa free de Vercel para listar
-  final String _apiUrlListar = 'https://vercel.app';
+  final String _apiUrlListar = 'https://sistema-gestion-industrial.vercel.app';
 
   // Future que controlará la carga de datos en el FutureBuilder
   late Future<List<dynamic>> _futureRequerimientos;
