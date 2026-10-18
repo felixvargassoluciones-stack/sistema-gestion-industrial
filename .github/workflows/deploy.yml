@@ -1,0 +1,46 @@
+name: Despliegue Automatizado Flutter Web
+
+on:
+  push:
+    branches:
+      - main  # Se dispara automáticamente cada vez que envías código a la rama main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Descarga el código fuente del repositorio en el servidor de GitHub
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      # 2. Configura el entorno de Java necesario para los componentes de Flutter
+      - name: Configurar Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'oracle'
+          java-version: '17'
+
+      # 3. Instala el motor oficial de Flutter en el contenedor de forma automática
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      # 4. Descarga los paquetes y dependencias del pubspec.yaml (http, image_picker, uuid)
+      - name: Instalar dependencias del sistema
+        run: flutter pub get
+
+      # 5. Compila la aplicación para Web optimizando las rutas de GitHub Pages
+      - name: Compilar aplicacion para produccion Web
+        run: flutter build web --base-href "/sistema-gestion-industrial/"
+
+      # 6. Toma la carpeta build/web y la publica automáticamente en la rama gh-pages
+      - name: Publicar Interfaz en GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: build/web
+          branch: gh-pages # GitHub creará esta rama para aislar los archivos visuales de la web
