@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:appwrite/appwrite.dart';
-import '../login/pantalla_login.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class PantallaMatriz extends StatefulWidget {
   const PantallaMatriz({super.key});
@@ -10,81 +10,73 @@ class PantallaMatriz extends StatefulWidget {
 }
 
 class _PantallaMatrizState extends State<PantallaMatriz> {
-  final _comentarioControllers = <String, TextEditingController>{};
-  
-  // Instancias globales para conectar los servicios de Appwrite
-  late Account _account;
-  late TablesDB _databases;
+  // URLs de tus microservicios seguros en Vercel
+  final String _urlListar = 'https://vercel.app';
+  final String _urlActualizar = 'https://vercel.app';
+
+  late Future<List<dynamic>> _futureTodosRequerimientos;
+  final _comentarioController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    // Enlace idéntico con las credenciales de tu proyecto industrial
-    Client client = Client()
-      ..setEndpoint('https://appwrite.io')
-      ..setProject('6ad4567d00058e53668a');
-
-    _account = Account(client);
-    _databases = TablesDB(client);
+    _futureTodosRequerimientos = _obtenerRequerimientosGlobales();
   }
-  // Cierra la sesión activa destruyendo el token del navegador
-  Future<void> _cerrarSesion() async {
+  // Consulta general sin filtros para el perfil de administración central
+  Future<List<dynamic>> _obtenerRequerimientosGlobales() async {
     try {
-      await _account.deleteSession(sessionId: 'current');
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const PantallaLogin()),
-      );
+      final respuesta = await http.get(Uri.parse(_urlListar));
+      if (respuesta.statusCode == 200) {
+        final datosMapa = jsonDecode(respuesta.body);
+        if (datosMapa['success'] == true) {
+          return datosMapa['datos'] as List<dynamic>;
+        }
+      }
+      throw 'Error al recuperar el inventario de solicitudes.';
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al cerrar sesión: $e'), backgroundColor: Colors.redAccent),
-      );
+      throw 'Fallo de red: $e';
     }
   }
 
-  // Función para actualizar el estado y comentario del requerimiento en Appwrite
-  Future<void> _actualizarRequerimiento(String rowId, String nuevoEstado) async {
-    final comentario = _comentarioControllers[rowId]?.text.trim() ?? '';
-
+  // Envío seguro de resolución técnica hacia Vercel y Turso SQL
+  Future<void> _actualizarEstatus(String id, String nuevoEstado) async {
     try {
-      // Modifica la fila seleccionada usando la API moderna de Tablas
-      await _databases.updateRow(
-        databaseId: '6ad45ac6002253571a52',
-        tableId: 'requerimientos',
-        rowId: rowId,
-        data: {
+      final respuesta = await http.post(
+        Uri.parse(_urlActualizar),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id': id,
           'estado': nuevoEstado,
-          'comentarioMatriz': comentario,
-        },
+          'comentario_matiz': _comentarioController.text.trim(),
+        }),
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Estatus actualizado a: $nuevoEstado'), backgroundColor: Colors.green),
-      );
-      // Fuerza el rediseño de la pantalla para refrescar el FutureBuilder
-      setState(() {});
+
+      final datosRespuesta = jsonDecode(respuesta.body);
+
+      if (respuesta.statusCode == 200 && datosRespuesta['success'] == true) {
+        _comentarioController.clear();
+        _mostrarAlerta('Registro actualizado con éxito en la base de datos.', Colors.green);
+        _refrescarPanel();
+      } else {
+        throw datosRespuesta['error'] ?? 'No se pudo guardar la actualización.';
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al actualizar: $e'), backgroundColor: Colors.redAccent),
-      );
+      _mostrarAlerta('Error operativo: $e', Colors.redAccent);
     }
   }
 
-  Color _obtenerColorEstado(String estado) {
-    switch (estado) {
-      case 'Pendiente': return Colors.orange;
-      case 'En Revisión': return Colors.blue;
-      case 'Atendido': return Colors.green;
-      case 'Rechazado': return Colors.red;
-      default: return Colors.grey;
-    }
+  void _refrescarPanel() {
+    setState(() {
+      _futureTodosRequerimientos = _obtenerRequerimientosGlobales();
+    });
   }
+  void _mostrarAlerta(String mensaje, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje), backgroundColor: color));
+  }
+
   @override
   void dispose() {
-    for (var controller in _comentarioControllers.values) {
-      controller.dispose();
-    }
+    _comentarioController.dispose();
     super.dispose();
   }
 
@@ -92,133 +84,107 @@ class _PantallaMatrizState extends State<PantallaMatriz> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Panel Administrador Matriz'),
+        title: const Text('Consola de Control Matriz (Soporte Industrial)'),
         backgroundColor: Colors.blueGrey,
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _cerrarSesion,
-            tooltip: 'Cerrar Sesión',
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.sync), onPressed: _refrescarPanel)],
       ),
-      // Lectura global de todas las solicitudes del parque industrial
-      body: FutureBuilder(
-        future: _databases.listRows(
-          databaseId: '6ad45ac6002253571a52',
-          tableId: 'requerimientos',
-        ),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error al cargar datos: ${snapshot.error}'));
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: RefreshIndicator(
+        onRefresh: () async => _refrescarPanel(),
+        child: FutureBuilder<List<dynamic>>(
+          future: _futureTodosRequerimientos,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return Center(child: Text('${snapshot.error}', style: const TextStyle(color: Colors.red)));
+            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Center(child: Text('No existen requerimientos en el sistema de gestión.'));
+            }
 
-          final rows = snapshot.data?.rows ?? [];
+            final requerimientos = snapshot.data!;
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: requerimientos.length,
+              itemBuilder: (context, indice) {
+                final item = requerimientos[indice];
+                final String urlFoto = item['url_imagen'] ?? '';
 
-          if (rows.isEmpty) {
-            return const Center(
-              child: Text(
-                'No hay requerimientos pendientes en el parque industrial.',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: rows.length,
-            itemBuilder: (context, index) {
-              final rowId = rows[index].$id;
-
-              final data = rows[index].data;
-              final titulo = data['titulo'] ?? 'Sin título';
-              final ubicacion = data['ubicacion'] ?? 'No especificada';
-              final prioridad = data['prioridad'] ?? 'Media';
-              final estado = data['estado'] ?? 'Pendiente';
-              final correo = data['correo'] ?? 'Anónimo';
-              // Inicializar el controlador de texto para el comentario si no existe
-              _comentarioControllers.putIfAbsent(rowId, () => TextEditingController(text: data['comentarioMatriz'] ?? ''));
-
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: ExpansionTile(
-                  leading: Chip(
-                    label: Text(estado, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                    backgroundColor: _obtenerColorEstado(estado),
-                  ),
-                  title: Text(titulo, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('Solicita: $correo\nÁrea: $ubicacion | Prioridad: $prioridad'),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Descripción detallada:', style: TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text(data['descripcion'] ?? ''),
-                          const SizedBox(height: 12),
-                          if (data['enlaceDrive'] != null && data['enlaceDrive'].toString().isNotEmpty) ...[
-                            const Text('Enlace a Evidencia / Planos (Google Drive):', style: TextStyle(fontWeight: FontWeight.bold)),
-                            SelectableText(
-                              data['enlaceDrive'],
-                              style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                          const Divider(),
-                          const SizedBox(height: 8),
-                          const Text('Dictamen / Respuesta de la Matriz:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _comentarioControllers[rowId],
-                            decoration: InputDecoration(
-                              hintText: 'Escribe las instrucciones de seguridad, motivos de rechazo o comentarios...',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            maxLines: 2,
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                                icon: const Icon(Icons.cancel),
-                                label: const Text('Rechazar'),
-                                onPressed: () => _actualizarRequerimiento(rowId, 'Rechazado'),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-                                icon: const Icon(Icons.assignment_late),
-                                label: const Text('En Revisión'),
-                                onPressed: () => _actualizarRequerimiento(rowId, 'En Revisión'),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                                icon: const Icon(Icons.check_circle),
-                                label: const Text('Atender'),
-                                onPressed: () => _actualizarRequerimiento(rowId, 'Atendido'),
-                              ),
-                            ],
-                          )
-                        ],
-                      ),
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 2,
+                  child: ExpansionTile(
+                    leading: CircleAvatar(
+                      backgroundColor: item['prioridad'] == 'Alta' ? Colors.red[100] : Colors.orange[100],
+                      child: Icon(Icons.warning_amber_rounded, color: item['prioridad'] == 'Alta' ? Colors.red : Colors.orange),
                     ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
+                    title: Text(item['titulo'] ?? 'Reporte sin título', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('De: ${item['correo_cliente']} | Estado: ${item['estado']}'),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text('Ubicación / Área: ${item['ubicacion']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 4),
+                            Text('Descripción del Problema:', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            Text(item['descripcion'] ?? 'Sin detalles adicionales.'),
+                            const SizedBox(height: 12),
+                            if (urlFoto.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    urlFoto,
+                                    height: 250,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => const Text('Evidencia fotográfica inaccesible.'),
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+                            if (item['estado'] == 'Pendiente' || item['estado'] == 'En Revisión') ...[
+                              TextFormField(
+                                controller: _comentarioController,
+                                decoration: InputDecoration(
+                                  labelText: 'Dictamen Técnico / Comentario de Matriz',
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () => _actualizarEstatus(item['id'], 'Rechazado'),
+                                    icon: const Icon(Icons.cancel, color: Colors.red),
+                                    label: const Text('Rechazar', style: TextStyle(color: Colors.red)),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton.icon(
+                                    onPressed: () => _actualizarEstatus(item['id'], 'Atendido'),
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                                    icon: const Icon(Icons.check_circle),
+                                    label: const Text('Marcar como Atendido'),
+                                  ),
+                                ],
+                              ),
+                            ] else ...[
+                              Text('Resolución de Matriz:', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                              Text(item['comentario_matriz'] ?? 'Sin comentarios registrados.', style: const TextStyle(fontStyle: FontStyle.italic)),
+                            ],
+                          ],
+                        ),
+                      )
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

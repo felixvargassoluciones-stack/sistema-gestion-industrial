@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:appwrite/appwrite.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../cliente/pantalla_cliente.dart';
 import '../matriz/pantalla_matriz.dart';
 
@@ -16,54 +17,39 @@ class _PantallaLoginState extends State<PantallaLogin> {
   final _passwordController = TextEditingController();
   bool _cargando = false;
 
-  // Instancias globales utilizando el SDK actualizado de Appwrite
-  late Account _account;
-  late Databases _databases;
+  // URL base de tu backend seguro en la capa free de Vercel
+  final String _apiUrl = 'https://vercel.app';
 
   @override
   void initState() {
     super.initState();
-    // Inicialización del cliente enlazado con tu proyecto industrial
-    Client client = Client()
-      ..setEndpoint('https://cloud.appwrite.io/v1')
-      ..setProject('6ad4567d00058e53668a');
-
-    _account = Account(client);
-    _databases = Databases(client);
   }
-  // Función principal para autenticar usuarios en Appwrite
+  // Función principal optimizada que reemplaza el SDK de Appwrite por HTTP nativo
   Future<void> _iniciarSesion() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _cargando = true);
 
     try {
-      // 1. Validar las credenciales creando una sesión de correo en Appwrite
-      await _account.createEmailPasswordSession(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+      // Enviamos las credenciales de forma segura mediante un POST en texto plano hacia la API
+      final respuesta = await http.post(
+        Uri.parse(_apiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'correo': _emailController.text.trim(),
+          'password': _passwordController.text.trim(),
+        }),
       );
 
-      // 2. Buscar el rol y jerarquía en la base de datos usando la API moderna de Tablas
-     // REEMPLÁZALO EXACTAMENTE POR ESTE BLOQUE ESTÁNDAR:
-// ignore: deprecated_member_use
-final resultado = await _databases.listDocuments(
+      // Decodificamos la respuesta JSON entregada por el backend
+      final datosRespuesta = jsonDecode(respuesta.body);
 
-  databaseId: '6ad45ac6002253571a52',
-  collectionId: 'usuarios', // Cambiado de tableId a collectionId
-  queries: [
-    Query.equal('correo', _emailController.text.trim()),
-  ],
-);
-
-if (resultado.documents.isNotEmpty) { // Cambiado de rows a documents
-  var userDoc = resultado.documents.first; // Cambiado de rows a documents
-  String rol = userDoc.data['rol'] ?? 'cliente';
-
+      if (respuesta.statusCode == 200 && datosRespuesta['success'] == true) {
+        String rol = datosRespuesta['usuario']['rol'] ?? 'cliente';
 
         if (!mounted) return;
 
-        // 3. Redirigir al panel correspondiente según su nivel de jerarquía
+        // Redirección inmediata según el rol estructurado en Turso SQL
         if (rol == 'matriz') {
           Navigator.pushReplacement(
             context,
@@ -76,16 +62,9 @@ if (resultado.documents.isNotEmpty) { // Cambiado de rows a documents
           );
         }
       } else {
-        throw 'El perfil de usuario no tiene asignado un rol en la base de datos.';
+        // Captura los errores controlados enviados desde nuestro archivo login.js
+        throw datosRespuesta['error'] ?? 'Credenciales inválidas o error en el sistema.';
       }
-    } on AppwriteException catch (e) {
-      String mensaje = 'Ocurrió un error al iniciar sesión.';
-      if (e.code == 401 || e.type == 'user_invalid_credentials') {
-        mensaje = 'El correo o la contraseña son incorrectos.';
-      } else if (e.code == 404) {
-        mensaje = 'No se pudo conectar con el servidor de base de datos.';
-      }
-      _mostrarAlerta(mensaje);
     } catch (e) {
       _mostrarAlerta(e.toString());
     } finally {
@@ -98,13 +77,13 @@ if (resultado.documents.isNotEmpty) { // Cambiado de rows a documents
       SnackBar(content: Text(mensaje), backgroundColor: Colors.redAccent),
     );
   }
-
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
